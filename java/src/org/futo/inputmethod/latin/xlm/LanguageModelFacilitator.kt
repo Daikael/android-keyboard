@@ -30,6 +30,7 @@ import org.futo.inputmethod.latin.settings.Settings
 import org.futo.inputmethod.latin.uix.SettingsKey
 import org.futo.inputmethod.latin.uix.USE_TRANSFORMER_FINETUNING
 import org.futo.inputmethod.latin.uix.getSetting
+import org.futo.inputmethod.latin.uix.getSettingFlow
 import org.futo.inputmethod.latin.utils.SuggestionResults
 import kotlin.math.ceil
 
@@ -437,6 +438,23 @@ public class LanguageModelFacilitator(
                     destroyModel()
                 }
             }
+        }
+
+        // personal fork: restore on-device transformer finetuning scheduling (removed upstream in eb8170d33 / 9548e68c0)
+        trainingEnabled = context.getSetting(USE_TRANSFORMER_FINETUNING)
+        launch {
+            withContext(Dispatchers.Default) {
+                context.getSettingFlow(USE_TRANSFORMER_FINETUNING).collect {
+                    if(!trainingEnabled && it) {
+                        scheduleTrainingWorkerBackground(context)
+                    }
+                    trainingEnabled = it
+                }
+            }
+        }
+
+        if(trainingEnabled) {
+            scheduleTrainingWorkerBackground(context)
         }
     }
 

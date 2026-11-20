@@ -4,12 +4,12 @@ import android.app.Application
 import android.content.Context
 import androidx.datastore.preferences.core.Preferences
 import androidx.core.content.edit
-//import androidx.work.Configuration
+import androidx.work.Configuration
 import org.futo.inputmethod.latin.uix.isDirectBootUnlocked
 
-class CrashLoggingApplication : Application() /*, Configuration.Provider*/ {
-    //override val workManagerConfiguration: Configuration
-    //    get() = Configuration.Builder().build()
+class CrashLoggingApplication : Application(), Configuration.Provider {
+    override val workManagerConfiguration: Configuration
+        get() = Configuration.Builder().build()
 
     companion object {
         fun logPreferences(preferences: Preferences) {

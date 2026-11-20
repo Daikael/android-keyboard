@@ -6,7 +6,7 @@ import android.os.UserManager
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 import androidx.datastore.preferences.core.Preferences
-//import androidx.work.Configuration
+import androidx.work.Configuration
 import org.acra.ACRA
 import org.acra.config.dialog
 //import org.acra.config.httpSender
@@ -26,9 +26,10 @@ import org.futo.inputmethod.latin.uix.settings.NavigationItemStyle
 import org.futo.inputmethod.latin.uix.settings.pages.copyToClipboard
 import kotlin.collections.plus
 
-class CrashLoggingApplication : Application() /*, Configuration.Provider*/ {
-    //override val workManagerConfiguration: Configuration
-    //    get() = Configuration.Builder().build()
+class CrashLoggingApplication : Application(), Configuration.Provider {
+    override val workManagerConfiguration: Configuration
+        get() = Configuration.Builder().build()
+
 
     override fun attachBaseContext(base: Context?) {
         super.attachBaseContext(base)
