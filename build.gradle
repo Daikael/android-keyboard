@@ -181,6 +181,37 @@ tasks.register('updateContributors') {
 
 preBuild.dependsOn updateLocales
 
+// Stable builds ship translated english_ime_name values ("FUTO Tastatur", "Clavier FUTO", ...).
+// Overlay the personal name in each of those locales without editing the translation repo.
+def personalAppNameDir = file("$buildDir/generated/personal-appname")
+tasks.register("generatePersonalAppName") {
+    def translations = file("translations/core")
+    inputs.dir(translations)
+    outputs.dir(personalAppNameDir)
+    doLast {
+        personalAppNameDir.deleteDir()
+        def xml = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n" +
+                "<resources>\n" +
+                "    <string name=\"english_ime_name\">Daikael\\'s FUTO Keyboard</string>\n" +
+                "</resources>\n"
+        if (!translations.isDirectory()) {
+            return
+        }
+        translations.eachDir { dir ->
+            if (!dir.name.startsWith("values-")) {
+                return
+            }
+            if (!new File(dir, "strings-appname.xml").exists()) {
+                return
+            }
+            def outDir = new File(personalAppNameDir, dir.name)
+            outDir.mkdirs()
+            new File(outDir, "strings-appname.xml").setText(xml, "UTF-8")
+        }
+    }
+}
+preBuild.dependsOn "generatePersonalAppName"
+
 android {
     namespace 'org.futo.inputmethod.latin'
 
@@ -219,6 +250,17 @@ android {
         }
     }
 
+    // Release signing, in order:
+    // 1. local keystore.properties (not committed)
+    // 2. KEYSTORE_FILE / KEYSTORE_PASSWORD / KEY_ALIAS / KEY_PASSWORD from the
+    //    environment or Gradle properties (CI secrets, or a fallback keystore).
+    //    PKCS12 keystores use the store password as the key password.
+    // 3. the debug keystore, which will not update an APK signed with another key
+    def personalKeystoreFile = System.getenv("KEYSTORE_FILE") ?: project.findProperty("KEYSTORE_FILE")
+    def personalKeystorePassword = System.getenv("KEYSTORE_PASSWORD") ?: project.findProperty("KEYSTORE_PASSWORD")
+    def personalKeyAlias = System.getenv("KEY_ALIAS") ?: project.findProperty("KEY_ALIAS")
+    def personalKeyPassword = System.getenv("KEY_PASSWORD") ?: project.findProperty("KEY_PASSWORD")
+
     final def keystorePropertiesFile = rootProject.file("keystore.properties")
     def releaseSigning = signingConfigs.debug
     if (keystorePropertiesFile.exists()) {
@@ -230,8 +272,15 @@ android {
             storeFile rootProject.file(keystoreProperties['storeFile'])
             storePassword keystoreProperties['storePassword']
         }
+    } else if (personalKeystoreFile && personalKeystorePassword && personalKeyAlias && personalKeyPassword) {
+        releaseSigning = signingConfigs.create("release") {
+            keyAlias personalKeyAlias
+            keyPassword personalKeyPassword
+            storeFile rootProject.file(personalKeystoreFile)
+            storePassword personalKeystorePassword
+        }
     } else {
-        project.logger.lifecycle('keystore.properties not found, APK may not be signed')
+        project.logger.lifecycle('No release keystore configured. Release APKs will be signed with the debug keystore (java/shared.keystore). That signature will not install as an update over a build signed with a different key.')
     }
 
 
@@ -298,6 +347,8 @@ android {
 
         stable {
             dimension "buildType"
+            // Personal fork: install beside the official package org.futo.inputmethod.latin.
+            applicationIdSuffix ".personal"
             buildConfigField "boolean", "IS_PLAYSTORE_BUILD", "false"
             buildConfigField "boolean", "UPDATE_CHECKING", "true"
             buildConfigField "boolean", "UPDATE_CHECKING_NETWORK", "false"
@@ -347,6 +398,7 @@ android {
 
         stable {
             java.srcDirs = ['common/src', 'java/src', 'java/stable/java']
+            res.srcDirs = ['java/stable/res', personalAppNameDir]
             manifest.srcFile 'java/stable/AndroidManifest.xml'
         }
 

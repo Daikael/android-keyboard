@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Personal fork only. Launcher label, keyboard picker, and IME subtype name. -->
+    <string name="english_ime_name">Daikael\'s FUTO Keyboard</string>
+</resources>
