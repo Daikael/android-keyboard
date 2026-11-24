@@ -13,6 +13,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.Data
+import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ForegroundInfo
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
@@ -27,6 +28,7 @@ import org.futo.inputmethod.latin.uix.USE_TRANSFORMER_FINETUNING
 import org.futo.inputmethod.latin.uix.getSetting
 import org.futo.inputmethod.latin.uix.isDirectBootUnlocked
 import java.io.File
+import java.util.concurrent.Executor
 import java.util.concurrent.TimeUnit
 
 val NUM_TRAINING_RUNS_KEY = intPreferencesKey("training_runs_count")
@@ -289,11 +291,12 @@ class TrainingWorker(val context: Context, val parameters: WorkerParameters) : C
 }
 
 private val WORKER_TAG: String = "TRAINING_WORKER"
+private val PERIODIC_WORK_NAME: String = "TRAINING_WORKER_PERIODIC"
+
 public fun scheduleTrainingWorkerBackground(context: Context) {
     if(!context.isDirectBootUnlocked) return
 
     val workManager = WorkManager.getInstance(context)
-    workManager.cancelAllWorkByTag(WORKER_TAG)
 
     val constraints = Constraints.Builder()
         .setRequiresBatteryNotLow(true)
@@ -306,9 +309,31 @@ public fun scheduleTrainingWorkerBackground(context: Context) {
         TrainingWorker::class.java,
         20L, TimeUnit.HOURS,
         // 12L, TimeUnit.HOURS
-    ).addTag(WORKER_TAG).setConstraints(constraints).build()
+    ).addTag(PERIODIC_WORK_NAME).setConstraints(constraints).build()
 
-    workManager.enqueue(request)
+    // Replace only the periodic job. Manual "Train now" is a one-time request
+    // tagged WORKER_TAG, so cancelling by that tag would abort a run in progress.
+    workManager.enqueueUniquePeriodicWork(
+        PERIODIC_WORK_NAME,
+        ExistingPeriodicWorkPolicy.CANCEL_AND_REENQUEUE,
+        request
+    )
+
+    // Jobs scheduled before the unique name existed used WORKER_TAG for both
+    // the periodic job and manual runs. Drop only the periodic ones.
+    val legacy = workManager.getWorkInfosByTag(WORKER_TAG)
+    legacy.addListener({
+        val infos = try {
+            legacy.get()
+        } catch (e: Exception) {
+            return@addListener
+        }
+        for (info in infos) {
+            if (info.periodicityInfo != null) {
+                workManager.cancelWorkById(info.id)
+            }
+        }
+    }, Executor { command -> command.run() })
 }
 
 public fun scheduleTrainingWorkerImmediately(context: Context, model: ModelInfoLoader? = null, trainingData: String? = null) {
